@@ -256,7 +256,7 @@ def estimateHomogenety(net):
 				del active_data[k]
 	return homogenety
 
-def calibrateGradientRatio(net, NIT=1):
+def calibrateGradientRatio(net, NIT=1, CALIBRATE_NIT=10):
 	import numpy as np
 	# When was a blob last used
 	last_used = {}
@@ -292,7 +292,7 @@ def calibrateGradientRatio(net, NIT=1):
 				del active_data[k]
 	output_std = np.mean(np.std(flattenData(active_data[last_tops[0]]), axis=0))
 	
-	for it in range(10):
+	for it in range(CALIBRATE_NIT):
 		# Reset the diffs
 		for l in net.layers:
 			for b in l.blobs:
@@ -321,6 +321,7 @@ def calibrateGradientRatio(net, NIT=1):
 		# Terminate if the relative change is less than 1% for all values
 		log_ratio = np.log( np.array(list(ratio.values())) )
 		if np.all( np.abs(log_ratio/np.log(target_ratio) - 1) < 0.01 ):
+			print("Stopping early: gradient ratio converged after %d iters" % it)
 			break
 		
 		# Update all the weights and biases
@@ -358,6 +359,8 @@ def calibrateGradientRatio(net, NIT=1):
 			print( "WARNING: It looks like one or more layers are not homogeneous! Trying to correct for this..." )
 			print( "         Output std = %f" % new_output_std )
 		output_std = new_output_std
+	else:
+		print("WARNING: gradient ratio calibration did not converge in %d iters" % CALIBRATE_NIT)
 
 def netFromString(s, t=None):
 	import caffe
@@ -452,6 +455,7 @@ def main():
 		# A simply helper function that lets you figure out which layers are not
 		# homogeneous
 		#print( estimateHomogenety(n) )
+		print('Calibrating gradient ratio')
 		calibrateGradientRatio(n)
 	n.save(args.output_caffemodel)
 
