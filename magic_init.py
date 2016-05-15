@@ -378,6 +378,20 @@ def getFileList(f):
 	from os import path
 	return [f for f in glob(f) if path.isfile(f)]
 
+def zeroLayers(n, start=None):
+	found_start = start is None
+	# Zero out all layers (or layers beginning from start, if not None)
+	for l, name in zip(n.layers, n._layer_names):
+		if not found_start:
+			if name == start:
+				found_start = True
+			else:
+				continue
+		for b in l.blobs:
+			b.data[...] = 0
+	if not found_start:
+		raise ValueError('Layer %s not found' % start)
+
 def main():
 	from argparse import ArgumentParser
 	from os import path
@@ -391,6 +405,7 @@ def main():
 	parser.add_argument('-t', '--type', default='elwise', help='Type: elwise, pca, zca, kmeans, rand (random input patches). Add fast_ to speed up the initialization, but you might lose in precision.')
 	parser.add_argument('--zero_from', default=None, help='Zero weights starting from this layer and reinitialize')
 	parser.add_argument('-z', action='store_true', help='Zero all weights and reinitialize')
+	parser.add_argument('--post_zero_from', default=None, help='AFTER everything else, zero weights starting from this layer (they will NOT be reinitialized)')
 	parser.add_argument('-cs',  action='store_true', help='Correct for scaling')
 	parser.add_argument('-q', action='store_true', help='Quiet execution')
 	parser.add_argument('-s', type=float, default=1.0, help='Scale the input [only custom data "-d"]')
@@ -434,18 +449,7 @@ def main():
 			#magicFix(n, args.nit)
 
 	if args.z or args.zero_from:
-		found_start = bool(args.z)
-		# Zero out all layers (or all layers from args.zero_from)
-		for l, name in zip(n.layers, n._layer_names):
-			if not found_start:
-				if name == args.zero_from:
-					found_start = True
-				else:
-					continue
-			for b in l.blobs:
-				b.data[...] = 0
-		if not found_start:
-			raise ValueError('Layer %s not found' % args.zero_from)
+		zeroLayers(n, start=args.zero_from)
 	if any([np.abs(l.blobs[0].data).sum() < 1e-10 for l in n.layers if len(l.blobs) > 0]):
 		print( [m for l,m in zip(n.layers, n._layer_names) if len(l.blobs) > 0 and np.abs(l.blobs[0].data).sum() < 1e-10] )
 		magicInitialize(n, args.bias, NIT=args.nit, type=args.type, max_data=args.mem_limit*1024*1024/4)
@@ -457,6 +461,8 @@ def main():
 		#print( estimateHomogenety(n) )
 		print('Calibrating gradient ratio')
 		calibrateGradientRatio(n)
+	if args.post_zero_from:
+		zeroLayers(n, start=args.post_zero_from)
 	n.save(args.output_caffemodel)
 
 if __name__ == "__main__":
