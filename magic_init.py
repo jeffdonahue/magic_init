@@ -386,6 +386,7 @@ def main():
 	parser.add_argument('-d', '--data', default=None, help='Image list to use [default prototxt data]')
 	parser.add_argument('-b', '--bias', type=float, default=0.1, help='Bias')
 	parser.add_argument('-t', '--type', default='elwise', help='Type: elwise, pca, zca, kmeans, rand (random input patches). Add fast_ to speed up the initialization, but you might lose in precision.')
+	parser.add_argument('--zero_from', default=None, help='Zero weights starting from this layer and reinitialize')
 	parser.add_argument('-z', action='store_true', help='Zero all weights and reinitialize')
 	parser.add_argument('-cs',  action='store_true', help='Correct for scaling')
 	parser.add_argument('-q', action='store_true', help='Quiet execution')
@@ -429,11 +430,19 @@ def main():
 		#if args.fix:
 			#magicFix(n, args.nit)
 
-	if args.z:
-		# Zero out all layers
-		for l in n.layers:
+	if args.z or args.zero_from:
+		found_start = bool(args.z)
+		# Zero out all layers (or all layers from args.zero_from)
+		for l, name in zip(n.layers, n._layer_names):
+			if not found_start:
+				if name == args.zero_from:
+					found_start = True
+				else:
+					continue
 			for b in l.blobs:
 				b.data[...] = 0
+		if not found_start:
+			raise ValueError('Layer %s not found' % args.zero_from)
 	if any([np.abs(l.blobs[0].data).sum() < 1e-10 for l in n.layers if len(l.blobs) > 0]):
 		print( [m for l,m in zip(n.layers, n._layer_names) if len(l.blobs) > 0 and np.abs(l.blobs[0].data).sum() < 1e-10] )
 		magicInitialize(n, args.bias, NIT=args.nit, type=args.type, max_data=args.mem_limit*1024*1024/4)
